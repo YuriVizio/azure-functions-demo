@@ -1,0 +1,46 @@
+
+version: "3.9"
+services:
+  functionapp:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      ASPNETCORE_URLS: "http://+:${APP_PORT}"
+      AzureWebJobsScriptRoot: "/home/site/wwwroot"
+      AzureFunctionsJobHost__Logging__Console__IsEnabled: "true"
+    ports:
+      - "${APP_PORT}:${APP_PORT}"
+    depends_on:
+      azurite:
+        condition: service_started
+      cosmos:
+        condition: service_started
+    profiles: ["dev", "stage"]
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    command: >
+      azurite --blobHost 0.0.0.0 --blobPort 10000
+              --queueHost 0.0.0.0 --queuePort 10001
+              --tableHost 0.0.0.0 --tablePort 10002
+              --location /data --skipApiVersionCheck
+    ports:
+      - "10000:10000"
+      - "10001:10001"
+      - "10002:10002"
+    volumes:
+      - ./emulator/storage/volumes:/data
+    profiles: ["dev"]
+
+  cosmos:
+    image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:latest
+    privileged: true
+    environment:
+      AZURE_COSMOS_EMULATOR_PARTITION_COUNT: 1
+      AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE: "true"
+    ports:
+      - "8081:8081"  # HTTPS endpoint
+    profiles: ["dev"]

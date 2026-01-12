@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout source
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Install .NET 8 SDK
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # Restore all projects
+      - name: Restore
+        run: |
+          dotnet restore ./src/FunctionApp/FunctionApp.csproj
+          dotnet restore ./src/tests/integration/IntegrationTests.csproj
+          dotnet restore ./src/tests/unit/F1.UnitTests/F1.UnitTests.csproj
+          dotnet restore ./src/tests/unit/F2.UnitTests/F2.UnitTests.csproj
+          dotnet restore ./src/tests/unit/F3.UnitTests/F3.UnitTests.csproj
+
+      # Build all projects
+      - name: Build
+        run: |
+          dotnet build ./src/FunctionApp/FunctionApp.csproj -c Release --no-restore
+          dotnet build ./src/tests/integration/IntegrationTests.csproj -c Release --no-restore
+          dotnet build ./src/tests/unit/F1.UnitTests/F1.UnitTests.csproj -c Release --no-restore
+          dotnet build ./src/tests/unit/F2.UnitTests/F2.UnitTests.csproj -c Release --no-restore
+          dotnet build ./src/tests/unit/F3.UnitTests/F3.UnitTests.csproj -c Release --no-restore
+
+      # Unit tests (consolidated folder)
+      - name: Run Unit Tests
+        run: |
+          dotnet test ./src/tests/unit/F1.UnitTests/F1.UnitTests.csproj -c Release --no-build
+          dotnet test ./src/tests/unit/F2.UnitTests/F2.UnitTests.csproj -c Release --no-build
+          dotnet test ./src/tests/unit/F3.UnitTests/F3.UnitTests.csproj -c Release --no-build
+
+      # Start Dev stack (Functions + Azurite + Cosmos)
+      - name: Start Dev Stack (Functions + Azurite + Cosmos)
+        run: |
+          # Ensure dev profile even if .env changes later
+          COMPOSE_PROFILES=dev docker compose up --build -d
+
+      # Wait for services to be ready
+      - name: Wait for Functions to be ready
+        run: |
+          # Cosmos emulator can take longer to boot; simple wait
+          sleep 40
+
+      # Integration tests
+      - name: Run Integration Tests
+        env:
+          APP_PORT: 8444
+        run: |
+          dotnet test ./src/tests/integration/IntegrationTests.csproj -c Release --no-build
+
+      # Stop Dev stack
+      - name: Stop Dev Stack
+        if: always()
+        run: |
+          COMPOSE_PROFILES=dev docker compose down -v
